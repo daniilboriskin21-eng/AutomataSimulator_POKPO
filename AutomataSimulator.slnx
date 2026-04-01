@@ -2,4 +2,5 @@
   <Project Path="AutomataSimulator.Core/AutomataSimulator.Core.csproj" />
   <Project Path="AutomataSimulator.Engine/AutomataSimulator.Engine.csproj" />
   <Project Path="AutomataSimulator.Translators/AutomataSimulator.Translators.csproj" Id="498ea835-e5d9-4ef6-b1e0-053cf94ca4c2" />
+  <Project Path="AutomataSimulator.ViewModels/AutomataSimulator.ViewModels.csproj" Id="5f225601-d5ba-4270-a267-af971174dc68" />
 </Solution>

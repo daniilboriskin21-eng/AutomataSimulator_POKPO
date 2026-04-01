@@ -1,5 +1,6 @@
 ﻿using System.Collections.Generic;
 using System.Linq;
+using System.Text;
 using AutomataSimulator.Core.Enums;
 using AutomataSimulator.Core.Models;
 using AutomataSimulator.Core.Models.Automata;
@@ -18,7 +19,11 @@ public class ThompsonTranslator : ITranslator<FiniteAutomaton>
 
     public FiniteAutomaton Translate(string regex)
     {
-        var postfix = ToPostfix(AddConcatenationMarkers(regex));
+        if (string.IsNullOrEmpty(regex)) throw new ArgumentException("Regex cannot be empty");
+
+        string prepared = PrepareRegex(regex);
+        string postfix = ToPostfix(prepared);
+
         var stack = new Stack<Fragment>();
         var nfa = new FiniteAutomaton(isDeterministic: false)
         {
@@ -28,62 +33,87 @@ public class ThompsonTranslator : ITranslator<FiniteAutomaton>
 
         foreach (char c in postfix)
         {
-            switch (c)
-            {
-                case '*': // Итерация Клини
-                    stack.Push(ProcessStar(nfa, stack.Pop()));
-                    break;
-                case '|': // Объединение
-                    var rightOr = stack.Pop();
-                    var leftOr = stack.Pop();
-                    stack.Push(ProcessUnion(nfa, leftOr, rightOr));
-                    break;
-                case '.': // Конкатенация
-                    var rightCat = stack.Pop();
-                    var leftCat = stack.Pop();
-                    stack.Push(ProcessConcat(nfa, leftCat, rightCat));
-                    break;
-                default: // Символ
-                    stack.Push(ProcessLiteral(nfa, c));
-                    break;
-            }
+            if (c == '*') stack.Push(ProcessStar(nfa, stack.Pop()));
+            else if (c == '|') stack.Push(ProcessUnion(nfa, stack.Pop(), stack.Pop()));
+            else if (c == '.') stack.Push(ProcessConcat(nfa, stack.Pop(), stack.Pop()));
+            else stack.Push(ProcessLiteral(nfa, c));
         }
 
-        var finalFragment = stack.Pop();
-        finalFragment.Start.IsStart = true;
-        finalFragment.End.IsFinal = true;
-
+        var final = stack.Pop();
+        final.Start.IsStart = true;
+        final.End.IsFinal = true;
         return nfa;
     }
 
-    private Fragment ProcessLiteral(FiniteAutomaton nfa, char symbol)
+    private string PrepareRegex(string regex)
     {
-        var s = new State { Name = $"q{nfa.States.Count}" };
-        var e = new State { Name = $"q{nfa.States.Count + 1}" };
-        nfa.States.Add(s);
-        nfa.States.Add(e);
-        nfa.Transitions.Add(new FiniteTransition { FromStateId = s.Id, ToStateId = e.Id, Symbol = symbol });
-        return new Fragment { Start = s, End = e };
+        var result = new StringBuilder();
+        for (int i = 0; i < regex.Length; i++)
+        {
+            char c1 = regex[i];
+            result.Append(c1);
+            if (i + 1 < regex.Length)
+            {
+                char c2 = regex[i + 1];
+                if (IsOperand(c1) && IsOperand(c2) || c1 == '*' && IsOperand(c2) || IsOperand(c1) && c2 == '(' || c1 == ')' && IsOperand(c2))
+                    result.Append('.');
+            }
+        }
+        return result.ToString();
     }
 
-    private Fragment ProcessConcat(FiniteAutomaton nfa, Fragment left, Fragment right)
+    private bool IsOperand(char c) => char.IsLetterOrDigit(c) || c == 'ε';
+
+    private string ToPostfix(string regex)
     {
-        // Соединяем конец левого фрагмента с началом правого через эпсилон
+        var output = new StringBuilder();
+        var operators = new Stack<char>();
+        var precedence = new Dictionary<char, int> { { '*', 3 }, { '.', 2 }, { '|', 1 } };
+
+        foreach (char c in regex)
+        {
+            if (IsOperand(c)) output.Append(c);
+            else if (c == '(') operators.Push(c);
+            else if (c == ')')
+            {
+                while (operators.Peek() != '(') output.Append(operators.Pop());
+                operators.Pop();
+            }
+            else
+            {
+                while (operators.Count > 0 && operators.Peek() != '(' && precedence[operators.Peek()] >= precedence[c])
+                    output.Append(operators.Pop());
+                operators.Push(c);
+            }
+        }
+        while (operators.Count > 0) output.Append(operators.Pop());
+        return output.ToString();
+    }
+
+    private Fragment ProcessLiteral(FiniteAutomaton nfa, char s)
+    {
+        var start = new State { Name = $"q{nfa.States.Count}" };
+        var end = new State { Name = $"q{nfa.States.Count + 1}" };
+        nfa.States.AddRange(new[] { start, end });
+        nfa.Transitions.Add(new FiniteTransition { FromStateId = start.Id, ToStateId = end.Id, Symbol = s == 'ε' ? null : s });
+        return new Fragment { Start = start, End = end };
+    }
+
+    private Fragment ProcessConcat(FiniteAutomaton nfa, Fragment right, Fragment left)
+    {
         nfa.Transitions.Add(new FiniteTransition { FromStateId = left.End.Id, ToStateId = right.Start.Id, Symbol = null });
         return new Fragment { Start = left.Start, End = right.End };
     }
 
-    private Fragment ProcessUnion(FiniteAutomaton nfa, Fragment left, Fragment right)
+    private Fragment ProcessUnion(FiniteAutomaton nfa, Fragment right, Fragment left)
     {
         var s = new State { Name = $"q{nfa.States.Count}" };
         var e = new State { Name = $"q{nfa.States.Count + 1}" };
         nfa.States.AddRange(new[] { s, e });
-
         nfa.Transitions.Add(new FiniteTransition { FromStateId = s.Id, ToStateId = left.Start.Id, Symbol = null });
         nfa.Transitions.Add(new FiniteTransition { FromStateId = s.Id, ToStateId = right.Start.Id, Symbol = null });
         nfa.Transitions.Add(new FiniteTransition { FromStateId = left.End.Id, ToStateId = e.Id, Symbol = null });
         nfa.Transitions.Add(new FiniteTransition { FromStateId = right.End.Id, ToStateId = e.Id, Symbol = null });
-
         return new Fragment { Start = s, End = e };
     }
 
@@ -92,16 +122,10 @@ public class ThompsonTranslator : ITranslator<FiniteAutomaton>
         var s = new State { Name = $"q{nfa.States.Count}" };
         var e = new State { Name = $"q{nfa.States.Count + 1}" };
         nfa.States.AddRange(new[] { s, e });
-
         nfa.Transitions.Add(new FiniteTransition { FromStateId = s.Id, ToStateId = inner.Start.Id, Symbol = null });
         nfa.Transitions.Add(new FiniteTransition { FromStateId = s.Id, ToStateId = e.Id, Symbol = null });
         nfa.Transitions.Add(new FiniteTransition { FromStateId = inner.End.Id, ToStateId = inner.Start.Id, Symbol = null });
         nfa.Transitions.Add(new FiniteTransition { FromStateId = inner.End.Id, ToStateId = e.Id, Symbol = null });
-
         return new Fragment { Start = s, End = e };
     }
-
-    // Вспомогательные методы для парсинга (упрощенная реализация)
-    private string AddConcatenationMarkers(string regex) { /* Логика добавления точек между символами */ return regex; }
-    private string ToPostfix(string regex) { /* Алгоритм Shunting-yard */ return regex; }
 }
