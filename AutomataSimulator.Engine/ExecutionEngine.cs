@@ -30,7 +30,6 @@ public class ExecutionEngine<TAutomaton, TTransition> : IExecutionEngine
         _automaton = automaton;
         _fullInput = input;
 
-        // Инициализация стратегии в зависимости от типа автомата
         _strategy = automaton switch
         {
             PushdownAutomaton => new PushdownTransitionStrategy(),
@@ -40,53 +39,88 @@ public class ExecutionEngine<TAutomaton, TTransition> : IExecutionEngine
         var startState = _automaton.GetStartState()
             ?? throw new InvalidOperationException("Автомат не имеет начального состояния");
 
+        // --- ЭТОТ БЛОК БЫЛ ПОТЕРЯН ---
+        // Инициализируем пустой стек. Если это PDA (с магазинной памятью) 
+        // и есть начальный символ стека, добавляем его.
         var initialStack = ImmutableStack<char>.Empty;
         if (_automaton is PushdownAutomaton pda && pda.InitialStackSymbol.HasValue)
         {
             initialStack = initialStack.Push(pda.InitialStackSymbol.Value);
         }
+        // ------------------------------
 
-        // Начальное состояние + сразу применяем эпсилон-замыкание для стартового узла
         var initialState = new ExecutionState
         {
             ActiveStateIds = ImmutableHashSet.Create(startState.Id),
             RemainingInput = input,
-            Stack = initialStack,
+            Stack = initialStack, // Теперь компилятор знает, что это такое
             ReadPosition = 0
         };
 
-        CurrentState = _strategy.ApplyEpsilonClosure(initialState, _automaton.Transitions.Cast<ITransition>());
+        // На старте не делаем эпсилон-замыкание, просто стоим в первой точке
+        CurrentState = initialState;
+        RefreshActiveIds();
+    }
+    private void RefreshActiveIds()
+    {
+        // Обновляем список, который запрашивает MainWindow для подсветки
+        _activeStateIds = new HashSet<Guid>(CurrentState.ActiveStateIds);
     }
 
     public void StepForward()
     {
         if (!CanStepForward) return;
 
+        // 1. Делаем "фотографию" текущего графа и кладем в стек.
+        // Если ExecutionState это record, он запомнит ровно ту картину, что сейчас на экране.
         _history.Push(CurrentState);
 
-        // 1. Пытаемся сделать шаг по символу
-        var nextState = _strategy.NextStep(CurrentState, _automaton.Transitions.Cast<ITransition>());
+        // 2. Внутренне применяем эпсилон-замыкание к тому, где мы сейчас стоим, 
+        // чтобы автомат "увидел" все доступные пути перед чтением символа
+        var closedCurrent = _strategy.ApplyEpsilonClosure(CurrentState, _automaton.Transitions.Cast<ITransition>());
 
-        // 2. Применяем эпсилон-замыкание для новых состояний
+        // 3. Делаем шаг по символу
+        var nextState = _strategy.NextStep(closedCurrent, _automaton.Transitions.Cast<ITransition>());
+
+        // 4. Применяем замыкание к новым узлам и сохраняем как текущее состояние
         CurrentState = _strategy.ApplyEpsilonClosure(nextState, _automaton.Transitions.Cast<ITransition>());
 
-        CheckBreakpoints();
+        // 5. Обновляем экран
+        RefreshActiveIds();
     }
 
     public void StepBackward()
     {
         if (CanStepBackward)
         {
+            // Просто достаем последнее состояние. 
+            // Если это record, оно сохранилось именно таким, каким было.
             CurrentState = _history.Pop();
+            RefreshActiveIds();
         }
     }
 
     public void Reset()
     {
         _history.Clear();
-        // (Логика сброса к начальному состоянию из конструктора)
-    }
 
+        var startState = _automaton.GetStartState() ?? throw new Exception("No start state");
+        var initialStack = ImmutableStack<char>.Empty;
+        if (_automaton is PushdownAutomaton pda && pda.InitialStackSymbol.HasValue)
+            initialStack = initialStack.Push(pda.InitialStackSymbol.Value);
+
+        var initialState = new ExecutionState
+        {
+            ActiveStateIds = ImmutableHashSet.Create(startState.Id),
+            RemainingInput = _fullInput,
+            Stack = initialStack,
+            ReadPosition = 0
+        };
+
+        // СТАЛО: Никакого эпсилон-замыкания. Возвращаемся в 1 точку.
+        CurrentState = initialState;
+        RefreshActiveIds();
+    }
     private void CheckBreakpoints()
     {
         foreach (var bp in _breakpoints)

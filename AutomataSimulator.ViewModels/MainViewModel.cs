@@ -9,8 +9,8 @@ namespace AutomataSimulator.ViewModels;
 
 public class MainViewModel : ViewModelBase
 {
-    private string _sourceText = string.Empty; // Regex или Грамматика
-    private string _testInput = string.Empty;  // Строка для проверки (например, "aabb")
+    private string _sourceText = string.Empty;
+    private string _testInput = string.Empty;
     private object? _currentAutomaton;
 
     public SimulationViewModel Simulation { get; } = new();
@@ -27,7 +27,6 @@ public class MainViewModel : ViewModelBase
         set => SetProperty(ref _testInput, value);
     }
 
-    // Это свойство будет привязано к визуализатору графа в XAML
     public object? CurrentAutomaton
     {
         get => _currentAutomaton;
@@ -51,8 +50,8 @@ public class MainViewModel : ViewModelBase
             // 2. Создаем движок симуляции для конечного автомата
             var engine = new ExecutionEngine<FiniteAutomaton, FiniteTransition>(nfa, TestInput);
 
-            // 3. Инициализируем SimulationViewModel этим движком
-            Simulation.Initialize(engine);
+            // 3. Инициализируем SimulationViewModel этим движком и строкой (ИСПРАВЛЕНО)
+            Simulation.Initialize(engine, TestInput);
 
             // Обновляем состояние кнопок
             TranslateRegexCommand.RaiseCanExecuteChanged();
@@ -70,8 +69,8 @@ public class MainViewModel : ViewModelBase
             // 2. Создаем движок симуляции для PDA
             var engine = new ExecutionEngine<PushdownAutomaton, PushdownTransition>(pda, TestInput);
 
-            // 3. Передаем в симуляцию
-            Simulation.Initialize(engine);
+            // 3. Передаем в симуляцию (ИСПРАВЛЕНО)
+            Simulation.Initialize(engine, TestInput);
         });
     }
 }

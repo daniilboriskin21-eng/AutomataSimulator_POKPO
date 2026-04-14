@@ -23,7 +23,6 @@ public partial class MainWindow : Window
         _vm = new MainViewModel();
         DataContext = _vm;
 
-        // Следим за созданием нового автомата
         _vm.PropertyChanged += (s, e) =>
         {
             if (e.PropertyName == nameof(MainViewModel.CurrentAutomaton))
@@ -32,10 +31,12 @@ public partial class MainWindow : Window
             }
         };
 
-        // Следим за шагами симуляции для обновления подсветки
         _vm.Simulation.PropertyChanged += (s, e) =>
         {
-            Dispatcher.Invoke(UpdateVisualHighlighting);
+            if (e.PropertyName == "ExecutionUpdated")
+            {
+                Dispatcher.Invoke(UpdateVisualHighlighting);
+            }
         };
     }
 
@@ -46,7 +47,6 @@ public partial class MainWindow : Window
         var visualGraph = new BidirectionalGraph<object, IEdge<object>>();
         _vertexMap.Clear();
 
-        // 1. Создаем вершины
         if (automaton is FiniteAutomaton fa)
         {
             foreach (var s in fa.States)
@@ -80,7 +80,6 @@ public partial class MainWindow : Window
 
         GraphLayout.Graph = visualGraph;
 
-        // ПРИНУДИТЕЛЬНЫЙ RELAYOUT: расталкиваем узлы
         Dispatcher.BeginInvoke(new Action(() =>
         {
             GraphLayout.UpdateLayout();
@@ -96,18 +95,15 @@ public partial class MainWindow : Window
 
         var activeIds = _vm.Simulation.GetActiveStateIds()?.ToList() ?? new List<Guid>();
 
-        // ХИТРОСТЬ: Если движок не вернул активных состояний (симуляция не работает/не начата),
-        // давай по умолчанию подсветим стартовые состояния, чтобы граф не казался "мертвым".
-        if (activeIds.Count == 0)
-        {
-            foreach (var pair in _vertexMap)
-            {
-                pair.Value.IsActive = pair.Value.IsStart;
-            }
-            return;
-        }
+        //if (activeIds.Count == 0)
+        //{
+        //    foreach (var pair in _vertexMap)
+        //    {
+        //        pair.Value.IsActive = pair.Value.IsStart;
+        //    }
+        //    return;
+        //}
 
-        // Если активные состояния есть - подсвечиваем строго их
         foreach (var pair in _vertexMap)
         {
             pair.Value.IsActive = activeIds.Contains(pair.Key);
@@ -116,15 +112,20 @@ public partial class MainWindow : Window
 
     private void StepForward_Click(object sender, RoutedEventArgs e)
     {
-        // Проверяем, разрешает ли ViewModel сделать шаг
         if (_vm?.Simulation?.StepForwardCommand.CanExecute(null) == true)
         {
             _vm.Simulation.StepForwardCommand.Execute(null);
             UpdateVisualHighlighting();
         }
-        else
+    }
+
+    // --- НОВЫЙ ОБРАБОТЧИК ---
+    private void StepBackward_Click(object sender, RoutedEventArgs e)
+    {
+        if (_vm?.Simulation?.StepBackwardCommand.CanExecute(null) == true)
         {
-            MessageBox.Show("Команда ШАГ заблокирована! Проверь логику в SimulationViewModel (возможно автомат еще не инициализирован или строка закончилась).", "Отладка");
+            _vm.Simulation.StepBackwardCommand.Execute(null);
+            UpdateVisualHighlighting();
         }
     }
 

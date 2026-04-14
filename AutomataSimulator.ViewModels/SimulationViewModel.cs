@@ -11,6 +11,14 @@ public class SimulationViewModel : ViewModelBase
     private string _inputString = string.Empty;
     private ObservableCollection<char> _stackView = new();
 
+    // --- НОВЫЕ СВОЙСТВА ДЛЯ ПРОГРЕССА ---
+    public string ProcessedText => _engine != null ? _inputString.Substring(0, _engine.CurrentState.ReadPosition) : "";
+    public string RemainingText => _engine != null ? _inputString.Substring(_engine.CurrentState.ReadPosition) : _inputString;
+
+    public double ProgressPercentage => (_engine == null || _inputString.Length == 0)
+        ? 0
+        : (_engine.CurrentState.ReadPosition / (double)_inputString.Length) * 100;
+
     public string InputString
     {
         get => _inputString;
@@ -32,14 +40,35 @@ public class SimulationViewModel : ViewModelBase
 
     public SimulationViewModel()
     {
-        StepForwardCommand = new RelayCommand(_ => _engine?.StepForward(), _ => _engine?.CanStepForward ?? false);
-        StepBackwardCommand = new RelayCommand(_ => _engine?.StepBackward(), _ => _engine?.CanStepBackward ?? false);
-        ResetCommand = new RelayCommand(_ => _engine?.Reset());
+        StepForwardCommand = new RelayCommand(_ => {
+            _engine?.StepForward();
+            UpdateUI();
+        }, _ => _engine?.CanStepForward ?? false);
+
+        StepBackwardCommand = new RelayCommand(_ => {
+            _engine?.StepBackward();
+            UpdateUI(); // Это вызовет событие "ExecutionUpdated"
+        }, _ => _engine?.CanStepBackward ?? false);
+
+        ResetCommand = new RelayCommand(_ => {
+            _engine?.Reset();
+            UpdateUI(); // Это вернет прогресс-бар на 0 и сбросит граф
+        });
     }
 
-    public void Initialize(IExecutionEngine engine)
+    // --- ИЗМЕНЕН МЕТОД: Теперь принимает строку ---
+    public void Initialize(IExecutionEngine engine, string input)
     {
         _engine = engine;
+        _inputString = input;
+        UpdateUI();
+    }
+
+    // --- НОВЫЙ МЕТОД: Для смены строки без пересоздания графа ---
+    public void ChangeInput(string newInput)
+    {
+        _inputString = newInput;
+        _engine?.Reset();
         UpdateUI();
     }
 
@@ -47,18 +76,25 @@ public class SimulationViewModel : ViewModelBase
     {
         if (_engine == null) return;
 
-        // Обновляем визуальное представление стека
         StackView.Clear();
         foreach (var symbol in _engine.CurrentState.Stack)
             StackView.Add(symbol);
 
+        // Уведомляем интерфейс обо всех изменениях
         OnPropertyChanged(nameof(IsActive));
+        OnPropertyChanged(nameof(ProcessedText));
+        OnPropertyChanged(nameof(RemainingText));
+        OnPropertyChanged(nameof(ProgressPercentage));
+        OnPropertyChanged("ExecutionUpdated");
+
+        // Принудительно обновляем кнопки
+        (StepForwardCommand as RelayCommand)?.RaiseCanExecuteChanged();
+        (StepBackwardCommand as RelayCommand)?.RaiseCanExecuteChanged();
+        (ResetCommand as RelayCommand)?.RaiseCanExecuteChanged();
     }
+
     public List<Guid> GetActiveStateIds()
     {
-        // _engine теперь "знает" про этот метод благодаря обновлению интерфейса
         return _engine?.GetActiveStateIds().ToList() ?? new List<Guid>();
     }
-
-
 }
