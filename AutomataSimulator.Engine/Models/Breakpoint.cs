@@ -14,7 +14,7 @@ public class Breakpoint
 
     public bool ShouldStop(ExecutionState state)
     {
-        if (!IsEnabled || !state.ActiveStateIds.Contains(StateId))
+        if (!IsEnabled || !state.ActiveConfigurations.Any(c => c.StateId == StateId))
             return false;
 
         return Condition?.Invoke(state) ?? true;

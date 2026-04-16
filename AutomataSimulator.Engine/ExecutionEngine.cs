@@ -16,11 +16,10 @@ public class ExecutionEngine<TAutomaton, TTransition> : IExecutionEngine
     private HashSet<Guid> _activeStateIds = new();
     private readonly TAutomaton _automaton;
     private readonly ITransitionStrategy _strategy; // Поле теперь существует
-    private readonly string _fullInput;
+    private string _fullInput;
     private readonly List<Breakpoint> _breakpoints = new();
     private readonly Stack<ExecutionState> _history = new();
-
-    public IEnumerable<Guid> GetActiveStateIds() => _activeStateIds;
+    public HashSet<char> Alphabet => _automaton.Alphabet;
     public ExecutionState CurrentState { get; private set; }
     public bool CanStepForward => !CurrentState.IsTerminal || HasAvailableEpsilonTransitions();
     public bool CanStepBackward => _history.Count > 0;
@@ -49,11 +48,12 @@ public class ExecutionEngine<TAutomaton, TTransition> : IExecutionEngine
         }
         // ------------------------------
 
+        var initialConfig = new StateConfiguration(startState.Id, initialStack);
+
         var initialState = new ExecutionState
         {
-            ActiveStateIds = ImmutableHashSet.Create(startState.Id),
-            RemainingInput = input,
-            Stack = initialStack, // Теперь компилятор знает, что это такое
+            ActiveConfigurations = ImmutableHashSet.Create(initialConfig),
+            RemainingInput = input, // В методе Reset тут будет _fullInput
             ReadPosition = 0
         };
 
@@ -61,10 +61,11 @@ public class ExecutionEngine<TAutomaton, TTransition> : IExecutionEngine
         CurrentState = initialState;
         RefreshActiveIds();
     }
+    public IEnumerable<Guid> GetActiveStateIds() => _activeStateIds;
     private void RefreshActiveIds()
     {
-        // Обновляем список, который запрашивает MainWindow для подсветки
-        _activeStateIds = new HashSet<Guid>(CurrentState.ActiveStateIds);
+        // Собираем все уникальные ID состояний из всех активных конфигураций
+        _activeStateIds = CurrentState.ActiveConfigurations.Select(c => c.StateId).ToHashSet();
     }
 
     public void StepForward()
@@ -109,11 +110,12 @@ public class ExecutionEngine<TAutomaton, TTransition> : IExecutionEngine
         if (_automaton is PushdownAutomaton pda && pda.InitialStackSymbol.HasValue)
             initialStack = initialStack.Push(pda.InitialStackSymbol.Value);
 
+        var initialConfig = new StateConfiguration(startState.Id, initialStack);
+
         var initialState = new ExecutionState
         {
-            ActiveStateIds = ImmutableHashSet.Create(startState.Id),
-            RemainingInput = _fullInput,
-            Stack = initialStack,
+            ActiveConfigurations = ImmutableHashSet.Create(initialConfig),
+            RemainingInput = _fullInput, // В методе Reset тут будет _fullInput
             ReadPosition = 0
         };
 
@@ -133,7 +135,7 @@ public class ExecutionEngine<TAutomaton, TTransition> : IExecutionEngine
     {
         // Проверка: можно ли из текущих состояний уйти по эпсилон в новые состояния
         var closed = _strategy.ApplyEpsilonClosure(CurrentState, _automaton.Transitions.Cast<ITransition>());
-        return !closed.ActiveStateIds.SetEquals(CurrentState.ActiveStateIds);
+        return !closed.ActiveConfigurations.SetEquals(CurrentState.ActiveConfigurations);
     }
 
     public void ToggleBreakpoint(Guid stateId)
@@ -154,6 +156,25 @@ public class ExecutionEngine<TAutomaton, TTransition> : IExecutionEngine
             {
                 break;
             }
+        }
+    }
+    public void SetInput(string input)
+    {
+        _fullInput = input;
+        Reset(); // Сбросит историю и поставит автомат в стартовое состояние с новой строкой
+    }
+    public bool IsAccepted
+    {
+        get
+        {
+            // 1. Строка должна быть полностью прочитана (IsTerminal == true)
+            if (!CurrentState.IsTerminal) return false;
+
+            // 2. Получаем ID всех финальных состояний автомата
+            var finalStateIds = _automaton.GetFinalStates().Select(s => s.Id).ToHashSet();
+
+            // 3. Если хотя бы одна активная конфигурация находится в финальном состоянии - Успех!
+            return CurrentState.ActiveConfigurations.Any(c => finalStateIds.Contains(c.StateId));
         }
     }
 }

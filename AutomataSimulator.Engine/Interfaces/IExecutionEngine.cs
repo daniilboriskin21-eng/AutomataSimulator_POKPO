@@ -17,6 +17,8 @@ public interface IExecutionEngine
     /// </summary>
     IEnumerable<Guid> GetActiveStateIds();
     void ToggleBreakpoint(Guid stateId);
-
     void Run();
+    void SetInput(string input);
+    bool IsAccepted { get; }
+    HashSet<char> Alphabet { get; }
 }

@@ -42,6 +42,10 @@ public class ThompsonTranslator : ITranslator<FiniteAutomaton>
         var final = stack.Pop();
         final.Start.IsStart = true;
         final.End.IsFinal = true;
+        nfa.Alphabet = nfa.Transitions
+            .Where(t => t.Symbol.HasValue)
+            .Select(t => t.Symbol!.Value)
+            .ToHashSet();
         return nfa;
     }
 

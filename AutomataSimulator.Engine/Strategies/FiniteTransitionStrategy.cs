@@ -15,17 +15,22 @@ public class FiniteTransitionStrategy : ITransitionStrategy
         char inputSymbol = current.RemainingInput[0];
         var finiteTransitions = transitions.Cast<FiniteTransition>();
 
-        // Ищем все переходы из текущих активных состояний по данному символу
-        var nextStateIds = finiteTransitions
-            .Where(t => current.ActiveStateIds.Contains(t.FromStateId) && t.Symbol == inputSymbol)
-            .Select(t => t.ToStateId)
-            .ToImmutableHashSet();
+        var nextConfigs = new HashSet<StateConfiguration>();
 
-        if (nextStateIds.IsEmpty) return current with { RemainingInput = "" }; // Тупик
+        foreach (var config in current.ActiveConfigurations)
+        {
+            var reachable = finiteTransitions
+                .Where(t => t.FromStateId == config.StateId && t.Symbol == inputSymbol)
+                .Select(t => new StateConfiguration(t.ToStateId, ImmutableStack<char>.Empty));
+
+            foreach (var r in reachable) nextConfigs.Add(r);
+        }
+
+        if (nextConfigs.Count == 0) return current with { RemainingInput = "" };
 
         return current with
         {
-            ActiveStateIds = nextStateIds,
+            ActiveConfigurations = nextConfigs.ToImmutableHashSet(),
             RemainingInput = current.RemainingInput[1..],
             ReadPosition = current.ReadPosition + 1,
             IsEpsilonStep = false
@@ -35,27 +40,22 @@ public class FiniteTransitionStrategy : ITransitionStrategy
     public ExecutionState ApplyEpsilonClosure(ExecutionState current, IEnumerable<ITransition> transitions)
     {
         var finiteTransitions = transitions.Cast<FiniteTransition>().ToList();
-        var closure = current.ActiveStateIds.ToHashSet();
-        var stack = new Stack<Guid>(closure);
+        var closure = new HashSet<StateConfiguration>(current.ActiveConfigurations);
+        var stack = new Stack<StateConfiguration>(current.ActiveConfigurations);
 
         while (stack.Count > 0)
         {
-            var stateId = stack.Pop();
-            var reachableViaEpsilon = finiteTransitions
-                .Where(t => t.FromStateId == stateId && t.Symbol == null)
-                .Select(t => t.ToStateId);
+            var config = stack.Pop();
+            var reachable = finiteTransitions
+                .Where(t => t.FromStateId == config.StateId && t.Symbol == null)
+                .Select(t => new StateConfiguration(t.ToStateId, ImmutableStack<char>.Empty));
 
-            foreach (var targetId in reachableViaEpsilon)
+            foreach (var r in reachable)
             {
-                if (closure.Add(targetId))
-                    stack.Push(targetId);
+                if (closure.Add(r)) stack.Push(r);
             }
         }
 
-        return current with
-        {
-            ActiveStateIds = closure.ToImmutableHashSet(),
-            IsEpsilonStep = true
-        };
+        return current with { ActiveConfigurations = closure.ToImmutableHashSet(), IsEpsilonStep = true };
     }
 }

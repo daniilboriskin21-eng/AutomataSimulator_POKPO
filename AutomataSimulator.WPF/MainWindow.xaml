@@ -60,7 +60,10 @@
 
                 <!-- 2. СОСТОЯНИЕ: ФИКТИВНЫЙ УЗЕЛ (Для петель и встречных стрелок) -->
                 <!-- Линии будут соединяться ровно с границами этого бордера -->
-                <Border Background="#FDFEFE" BorderBrush="#BDC3C7" BorderThickness="1" CornerRadius="4" Padding="4,2">
+                <!-- 2. СОСТОЯНИЕ: ФИКТИВНЫЙ УЗЕЛ (Для петель и встречных стрелок) -->
+                <Border Background="#FDFEFE" BorderBrush="#BDC3C7" BorderThickness="1" CornerRadius="4" Padding="4,2" 
+        MaxWidth="200" MaxHeight="120">
+                    <!-- ОГРАНИЧИЛИ РАЗМЕР -->
                     <Border.Style>
                         <Style TargetType="Border">
                             <Setter Property="Visibility" Value="Collapsed"/>
@@ -71,9 +74,12 @@
                             </Style.Triggers>
                         </Style>
                     </Border.Style>
-                    <TextBlock Text="{Binding Name}" Foreground="#2980B9" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                </Border>
 
+                    <!-- Добавили ScrollViewer для прокрутки правил грамматики -->
+                    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto">
+                        <TextBlock Text="{Binding Name}" Foreground="#2980B9" FontWeight="Bold" HorizontalAlignment="Left" VerticalAlignment="Top"/>
+                    </ScrollViewer>
+                </Border>
             </Grid>
         </DataTemplate>
 
@@ -85,13 +91,29 @@
     </Window.Resources>
     
     <Grid Background="#ECF0F1">
+        <!-- Добавляем определение строк -->
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <!-- Для меню -->
+            <RowDefinition Height="*"/>
+            <!-- Для всего остального -->
+        </Grid.RowDefinitions>
+
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="320"/>
             <ColumnDefinition Width="*"/>
             <ColumnDefinition Width="250"/>
         </Grid.ColumnDefinitions>
 
-        <Border Grid.Column="0" Background="White" Margin="10" CornerRadius="12" Padding="15">
+        <!-- НОВАЯ ПАНЕЛЬ МЕНЮ (Загрузка / Сохранение) -->
+        <Border Grid.Row="0" Grid.ColumnSpan="3" Background="White" Margin="10,10,10,0" CornerRadius="12" Padding="10">
+            <StackPanel Orientation="Horizontal">
+                <Button Content="📂 Загрузить проект" Command="{Binding LoadProjectCommand}" Margin="0,0,10,0" Padding="15,8" Background="#BDC3C7" BorderThickness="0" FontWeight="Bold"/>
+                <Button Content="💾 Сохранить проект" Command="{Binding SaveProjectCommand}" Padding="15,8" Background="#2ECC71" Foreground="White" BorderThickness="0" FontWeight="Bold"/>
+            </StackPanel>
+        </Border>
+
+        <Border Grid.Row="1" Grid.Column="0" Background="White" Margin="10" CornerRadius="12" Padding="15">
             <StackPanel>
                 <TextBlock Text="Конструктор" FontSize="20" FontWeight="Bold" Margin="0,0,0,15"/>
                 <TextBox Text="{Binding SourceText, UpdateSourceTrigger=PropertyChanged}" Height="100" AcceptsReturn="True" Margin="0,5,0,10" Padding="5"/>
@@ -104,7 +126,7 @@
             </StackPanel>
         </Border>
 
-        <Border Grid.Column="1" Background="White" Margin="0,10" CornerRadius="12" ClipToBounds="True">
+        <Border Grid.Row="1" Grid.Column="1" Background="White" Margin="0,10" CornerRadius="12" ClipToBounds="True">
 
             <graph:GraphLayout x:Name="GraphLayout" 
                        LayoutAlgorithmType="KK" 
@@ -112,9 +134,14 @@
 
         </Border>
 
-        <Border Grid.Column="2" Background="White" Margin="10" CornerRadius="12" Padding="15">
+        <Border Grid.Row="1" Grid.Column="2" Background="White" Margin="10" CornerRadius="12" Padding="15">
             <StackPanel DataContext="{Binding Simulation}">
                 <TextBlock Text="Симуляция" FontSize="18" FontWeight="Bold" Margin="0,0,0,15"/>
+
+                <!-- НОВАЯ ПЛАШКА СТАТУСА -->
+                <Border Background="{Binding StatusColor, Mode=OneWay}" CornerRadius="6" Padding="10" Margin="0,0,0,15">
+                    <TextBlock Text="{Binding StatusText, Mode=OneWay}" Foreground="White" FontWeight="Bold" HorizontalAlignment="Center" FontSize="14"/>
+                </Border>
 
                 <TextBlock Text="Прогресс чтения:" FontWeight="Bold" Margin="0,0,0,5"/>
                 <Border Background="#FDFEFE" BorderBrush="#D5DBDB" BorderThickness="1" Padding="10" Margin="0,0,0,5">

@@ -1,5 +1,9 @@
-﻿using AutomataSimulator.Core.Models.Automata;
+﻿using Microsoft.Win32;
+using System.IO;
+using System;
+using AutomataSimulator.Core.Models.Automata;
 using AutomataSimulator.Core.Models.Transitions;
+using AutomataSimulator.Core.Services;
 using AutomataSimulator.Engine;
 using AutomataSimulator.Translators.Regex;
 using AutomataSimulator.Translators.Grammar;
@@ -24,9 +28,15 @@ public class MainViewModel : ViewModelBase
     public string TestInput
     {
         get => _testInput;
-        set => SetProperty(ref _testInput, value);
+        set
+        {
+            if (SetProperty(ref _testInput, value))
+            {
+                // Как только пользователь ввел новый символ, сразу отдаем его симулятору
+                Simulation.ChangeInput(value);
+            }
+        }
     }
-
     public object? CurrentAutomaton
     {
         get => _currentAutomaton;
@@ -34,53 +44,49 @@ public class MainViewModel : ViewModelBase
         {
             if (SetProperty(ref _currentAutomaton, value))
             {
-                // Обновляем состояние кнопки при смене автомата
+                // Принудительно обновляем состояние кнопок при смене автомата
                 ConvertToDfaCommand?.RaiseCanExecuteChanged();
+                SaveProjectCommand?.RaiseCanExecuteChanged();
             }
         }
     }
+
+    // Объявление команд
     public RelayCommand TranslateRegexCommand { get; }
     public RelayCommand TranslateGrammarCommand { get; }
-
     public RelayCommand ConvertToDfaCommand { get; }
+    public RelayCommand SaveProjectCommand { get; }
+    public RelayCommand LoadProjectCommand { get; }
 
     public MainViewModel()
     {
+        // 1. Создание NFA из Regex
         TranslateRegexCommand = new RelayCommand(_ =>
         {
             if (string.IsNullOrWhiteSpace(SourceText)) return;
 
-            // 1. Транслируем текст в модель NFA
             var translator = new ThompsonTranslator();
             var nfa = translator.Translate(SourceText);
             CurrentAutomaton = nfa;
 
-            // 2. Создаем движок симуляции для конечного автомата
             var engine = new ExecutionEngine<FiniteAutomaton, FiniteTransition>(nfa, TestInput);
-
-            // 3. Инициализируем SimulationViewModel этим движком и строкой (ИСПРАВЛЕНО)
             Simulation.Initialize(engine, TestInput);
-
-            // Обновляем состояние кнопок
-            TranslateRegexCommand.RaiseCanExecuteChanged();
         });
 
+        // 2. Создание PDA из Грамматики
         TranslateGrammarCommand = new RelayCommand(_ =>
         {
             if (string.IsNullOrWhiteSpace(SourceText)) return;
 
-            // 1. Транслируем грамматику в PDA
             var translator = new CfgToPdaTranslator();
             var pda = translator.Translate(SourceText);
             CurrentAutomaton = pda;
 
-            // 2. Создаем движок симуляции для PDA
             var engine = new ExecutionEngine<PushdownAutomaton, PushdownTransition>(pda, TestInput);
-
-            // 3. Передаем в симуляцию (ИСПРАВЛЕНО)
             Simulation.Initialize(engine, TestInput);
         });
 
+        // 3. Конвертация NFA в DFA
         ConvertToDfaCommand = new RelayCommand(_ =>
         {
             if (CurrentAutomaton is FiniteAutomaton nfa && !nfa.IsDeterministic())
@@ -92,6 +98,59 @@ public class MainViewModel : ViewModelBase
                 Simulation.Initialize(engine, TestInput);
             }
         }, _ => CurrentAutomaton is FiniteAutomaton fa && !fa.IsDeterministic());
-        // Не забудьте вызывать ConvertToDfaCommand.RaiseCanExecuteChanged() при смене CurrentAutomaton
+
+        // 4. Сохранение проекта
+        SaveProjectCommand = new RelayCommand(_ =>
+        {
+            if (CurrentAutomaton == null) return;
+
+            var dialog = new SaveFileDialog
+            {
+                Filter = "Automata Project (*.json)|*.json",
+                DefaultExt = ".json",
+                FileName = "NewAutomaton.json"
+            };
+
+            if (dialog.ShowDialog() == true)
+            {
+                var json = ProjectSerializer.Serialize(CurrentAutomaton);
+                File.WriteAllText(dialog.FileName, json);
+            }
+        }, _ => CurrentAutomaton != null); // Кнопка активна только если автомат существует
+
+        // 5. Загрузка проекта
+        LoadProjectCommand = new RelayCommand(_ =>
+        {
+            var dialog = new OpenFileDialog
+            {
+                Filter = "Automata Project (*.json)|*.json"
+            };
+
+            if (dialog.ShowDialog() == true)
+            {
+                try
+                {
+                    var json = File.ReadAllText(dialog.FileName);
+                    var automaton = ProjectSerializer.Deserialize(json);
+
+                    CurrentAutomaton = automaton; // Запускает сеттер, который делает кнопку "Сохранить" активной
+
+                    if (automaton is FiniteAutomaton fa)
+                    {
+                        var engine = new ExecutionEngine<FiniteAutomaton, FiniteTransition>(fa, TestInput);
+                        Simulation.Initialize(engine, TestInput);
+                    }
+                    else if (automaton is PushdownAutomaton pda)
+                    {
+                        var engine = new ExecutionEngine<PushdownAutomaton, PushdownTransition>(pda, TestInput);
+                        Simulation.Initialize(engine, TestInput);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"Ошибка загрузки: {ex.Message}");
+                }
+            }
+        });
     }
 }
