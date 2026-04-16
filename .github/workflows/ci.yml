@@ -1,0 +1,104 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  # Стадия 1: Статический анализ и сборка
+  build-and-analyze:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '8.0.x' # Укажите вашу версию .NET
+    - name: Restore dependencies
+      run: dotnet restore
+    - name: Build
+      run: dotnet build --no-restore -c Release
+    # .NET автоматически запускает встроенные анализаторы (SonarAnalyzer, StyleCop) при сборке
+
+  # Стадия 2: Модульные тесты и проверка покрытия (Задание 3)
+  unit-tests:
+    needs: build-and-analyze
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '8.0.x'
+        
+    # Добавляем пакеты Coverlet и Allure
+    - name: Add Coverlet and Allure packages
+      run: |
+        dotnet add AutomataSimulator.Tests package coverlet.msbuild
+        dotnet add AutomataSimulator.Tests package Allure.XUnit
+
+    # Запуск юнит-тестов с Coverlet. Требуем покрытие минимум 70%
+    - name: Run Unit Tests with Coverage
+      run: >
+        dotnet test AutomataSimulator.Tests 
+        --filter "Category=Unit" 
+        /p:CollectCoverage=true 
+        /p:CoverletOutputFormat=cobertura 
+        /p:Threshold=70 
+        /p:ThresholdType=line 
+        /p:Exclude="[AutomataSimulator.WPF]*"
+
+  # Стадия 3: Интеграционные тесты
+  integration-tests:
+    needs: build-and-analyze
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '8.0.x'
+    
+    - name: Run Integration Tests
+      run: dotnet test AutomataSimulator.Tests --filter "Category=Integration" --logger "trx;LogFileName=integration_results.trx"
+      
+    - name: Upload Test Results Artifact
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: integration-test-results
+        path: '**/integration_results.trx'
+
+  # Стадия 4: Генерация Allure-отчета (Задание 3, пункт 4)
+  generate-allure-report:
+    needs: [unit-tests, integration-tests]
+    if: always() # Выполнять даже если тесты упали
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Download Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: integration-test-results
+          path: allure-results
+          
+      - name: Generate Allure Report
+        uses: simple-elf/allure-report-action@master
+        if: always()
+        id: allure-report
+        with:
+          allure_results: allure-results
+          gh_pages: gh-pages
+          allure_report: allure-report
+          allure_history: allure-history
+
+      - name: Deploy report to Github Pages
+        if: always()
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_branch: gh-pages
+          publish_dir: allure-history
