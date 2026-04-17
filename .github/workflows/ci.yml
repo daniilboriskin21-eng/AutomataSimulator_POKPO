@@ -1,93 +1,104 @@
-name: CI/CD Pipeline
+name: AutomataSimulator CI/CD
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "master" ]
   pull_request:
-    branches: [ "main" ]
+    branches: [ "master" ]
 
 jobs:
-  # Стадия 1: Статический анализ и сборка
-  build-and-analyze:
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v4
-    - name: Setup .NET
-      uses: actions/setup-dotnet@v4
-      with:
-        dotnet-version: '8.0.x' # Укажите вашу версию .NET
-    - name: Restore dependencies
-      run: dotnet restore
-    - name: Build
-      run: dotnet build --no-restore -c Release
-    # .NET автоматически запускает встроенные анализаторы (SonarAnalyzer, StyleCop) при сборке
-
-  # Стадия 2: Модульные тесты и проверка покрытия (Задание 3)
-  unit-tests:
-    needs: build-and-analyze
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v4
-    - name: Setup .NET
-      uses: actions/setup-dotnet@v4
-      with:
-        dotnet-version: '8.0.x'
-        
-    # Добавляем пакеты Coverlet и Allure
-    - name: Add Coverlet and Allure packages
-      run: |
-        dotnet add AutomataSimulator.Tests package coverlet.msbuild
-        dotnet add AutomataSimulator.Tests package Allure.XUnit
-
-    # Запуск юнит-тестов с Coverlet. Требуем покрытие минимум 70%
-    - name: Run Unit Tests with Coverage
-      run: >
-        dotnet test AutomataSimulator.Tests 
-        --filter "Category=Unit" 
-        /p:CollectCoverage=true 
-        /p:CoverletOutputFormat=cobertura 
-        /p:Threshold=70 
-        /p:ThresholdType=line 
-        /p:Exclude="[AutomataSimulator.WPF]*"
-
-  # Стадия 3: Интеграционные тесты
-  integration-tests:
-    needs: build-and-analyze
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v4
-    - name: Setup .NET
-      uses: actions/setup-dotnet@v4
-      with:
-        dotnet-version: '8.0.x'
-    
-    - name: Run Integration Tests
-      run: dotnet test AutomataSimulator.Tests --filter "Category=Integration" --logger "trx;LogFileName=integration_results.trx"
-      
-    - name: Upload Test Results Artifact
-      uses: actions/upload-artifact@v4
-      if: always()
-      with:
-        name: integration-test-results
-        path: '**/integration_results.trx'
-
-  # Стадия 4: Генерация Allure-отчета (Задание 3, пункт 4)
-  generate-allure-report:
-    needs: [unit-tests, integration-tests]
-    if: always() # Выполнять даже если тесты упали
-    runs-on: ubuntu-latest
+  # ==========================================
+  # СТАДИЯ 1: Линтер, Анализ и Модульные тесты
+  # ==========================================
+  lint-and-unit-tests:
+    runs-on: windows-latest # Обязательно Windows из-за WPF
     steps:
       - uses: actions/checkout@v4
       
-      - name: Download Artifacts
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x' # У вас в csproj указан net10.0
+
+      - name: Restore dependencies
+        run: dotnet restore
+
+      # Задание 1. Статический анализ.
+      # Флаг /p:TreatWarningsAsErrors=true заставит сборку УПАСТЬ, если в BadCode.cs есть ошибки стиля или баги
+      - name: Static Analysis (Build)
+        run: dotnet build --no-restore -c Release /p:TreatWarningsAsErrors=true
+
+      # Ставим coverlet.msbuild для корректной работы флага /p:Threshold
+      - name: Add Coverlet MSBuild
+        run: dotnet add AutomataSimulator.Tests package coverlet.msbuild
+
+      # Задание 3. Порог покрытия 70%.
+      # Генерация файла .trx для Allure.
+      - name: Run Unit Tests with Coverage
+        run: >
+          dotnet test AutomataSimulator.Tests --no-build -c Release
+          --filter "Category=Unit"
+          --logger "trx;LogFileName=unit_results.trx"
+          /p:CollectCoverage=true
+          /p:Threshold=70
+
+      - name: Upload Unit Test Results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-unit
+          path: '**/unit_results.trx'
+
+  # ==========================================
+  # СТАДИЯ 2: Интеграционные тесты
+  # ==========================================
+  integration-tests:
+    needs: lint-and-unit-tests
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Run Integration Tests
+        run: dotnet test AutomataSimulator.Tests --filter "Category=Integration" --logger "trx;LogFileName=integration_results.trx"
+
+      - name: Upload Integration Test Results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-integration
+          path: '**/integration_results.trx'
+
+  # ==========================================
+  # СТАДИЯ 3: Генерация отчета Allure
+  # ==========================================
+  report:
+    needs: [lint-and-unit-tests, integration-tests]
+    if: always() # Выполняем даже если тесты или статический анализ упали
+    runs-on: ubuntu-latest # Обязательно Ubuntu, так как Allure Action использует Docker
+    steps:
+      - uses: actions/checkout@v4
+
+      # Скачиваем артефакты от предыдущих стадий в одну папку allure-results
+      - name: Download Unit Test Results
         uses: actions/download-artifact@v4
         with:
-          name: integration-test-results
+          name: test-results-unit
           path: allure-results
-          
+
+      - name: Download Integration Test Results
+        uses: actions/download-artifact@v4
+        with:
+          name: test-results-integration
+          path: allure-results
+
+      # Allure умеет "из коробки" читать .trx файлы от MSTest/xUnit
       - name: Generate Allure Report
         uses: simple-elf/allure-report-action@master
-        if: always()
         id: allure-report
         with:
           allure_results: allure-results
@@ -95,8 +106,7 @@ jobs:
           allure_report: allure-report
           allure_history: allure-history
 
-      - name: Deploy report to Github Pages
-        if: always()
+      - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v3
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
