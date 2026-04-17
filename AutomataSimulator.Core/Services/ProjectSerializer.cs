@@ -62,7 +62,7 @@ public static class ProjectSerializer
     public static object Deserialize(string json)
     {
         var dto = JsonSerializer.Deserialize<AutomatonDto>(json, Options)
-            ?? throw new Exception("Файл поврежден или имеет неверный формат.");
+            ?? throw new InvalidDataException("Файл поврежден или имеет неверный формат.");
 
         if (dto.Type == AutomatonType.DFA || dto.Type == AutomatonType.NFA)
         {

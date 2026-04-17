@@ -15,7 +15,7 @@ public static class NfaToDfaConverter
         {
             Name = nfa.Name + " (DFA)",
             Origin = CreationOrigin.Manual,
-            Alphabet = nfa.Alphabet.Where(c => c != null).ToHashSet()
+            Alphabet = nfa.Alphabet.ToHashSet()
         };
 
         // Собираем все символы переходов (кроме эпсилон)
@@ -33,7 +33,7 @@ public static class NfaToDfaConverter
         var unprocessedStates = new Queue<HashSet<Guid>>();
 
         // 1. Начальное состояние DFA = эпсилон-замыкание начального состояния NFA
-        var startNfaState = nfa.GetStartState() ?? throw new Exception("No start state in NFA");
+        var startNfaState = nfa.GetStartState() ?? throw new InvalidOperationException("No start state in NFA");
         var dfaStartStateSet = GetEpsilonClosure(nfa, new HashSet<Guid> { startNfaState.Id });
 
         var dfaStartState = CreateDfaState(nfa, dfaStartStateSet);
