@@ -33,21 +33,21 @@ jobs:
         run: dotnet add AutomataSimulator.Tests package coverlet.msbuild
 
       # Задание 3. Порог покрытия 70%.
-      # Генерация файла .trx для Allure.
+      # Генерация файла .hml для Allure.
       - name: Run Unit Tests with Coverage
         run: >
           dotnet test AutomataSimulator.Tests --no-build -c Release
           --filter "Category=Unit"
-          --logger "trx;LogFileName=unit_results.trx"
+          --logger "junit;LogFilePath=unit_results.xml"
           /p:CollectCoverage=true
-          /p:Threshold=60
+          /p:Threshold=65
 
       - name: Upload Unit Test Results
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: test-results-unit
-          path: '**/unit_results.trx'
+          path: '**/unit_results.xml'
 
   # ==========================================
   # СТАДИЯ 2: Интеграционные тесты
@@ -64,14 +64,14 @@ jobs:
           dotnet-version: '10.0.x'
 
       - name: Run Integration Tests
-        run: dotnet test AutomataSimulator.Tests --filter "Category=Integration" --logger "trx;LogFileName=integration_results.trx"
+        run: dotnet test AutomataSimulator.Tests --filter "Category=Integration" --logger "junit;LogFilePath=integration_results.xml"
 
       - name: Upload Integration Test Results
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: test-results-integration
-          path: '**/integration_results.trx'
+          path: '**/integration_results.xml'
 
   # ==========================================
   # СТАДИЯ 3: Генерация отчета Allure
