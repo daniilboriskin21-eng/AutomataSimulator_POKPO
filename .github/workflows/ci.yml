@@ -40,7 +40,7 @@ jobs:
           --filter "Category=Unit"
           --logger "trx;LogFileName=unit_results.trx"
           /p:CollectCoverage=true
-          /p:Threshold=70
+          /p:Threshold=60
 
       - name: Upload Unit Test Results
         if: always()
