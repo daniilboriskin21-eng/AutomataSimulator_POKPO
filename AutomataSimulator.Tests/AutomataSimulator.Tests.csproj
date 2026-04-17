@@ -22,7 +22,6 @@
     <ProjectReference Include="..\AutomataSimulator.Core\AutomataSimulator.Core.csproj" />
     <ProjectReference Include="..\AutomataSimulator.Engine\AutomataSimulator.Engine.csproj" />
     <ProjectReference Include="..\AutomataSimulator.Translators\AutomataSimulator.Translators.csproj" />
-	<PackageReference Include="JunitXml.TestLogger" Version="3.1.12" />
   </ItemGroup>
 
 </Project>
