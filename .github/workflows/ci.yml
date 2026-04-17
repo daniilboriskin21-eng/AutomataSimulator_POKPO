@@ -79,27 +79,39 @@ jobs:
   # ==========================================
   # СТАДИЯ 3: Генерация отчета Allure
   # ==========================================
+  # ==========================================
+  # СТАДИЯ 3: Генерация отчета Allure
+  # ==========================================
   report:
     needs: [lint-and-unit-tests, integration-tests]
-    if: always() # Выполняем даже если тесты или статический анализ упали
-    runs-on: ubuntu-latest # Обязательно Ubuntu, так как Allure Action использует Docker
+    if: always() # Выполняем даже если тесты упали
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      # Скачиваем артефакты от предыдущих стадий в одну папку allure-results
-      - name: Download Unit Test Results
+      # Чтобы запустить конвертер, нам нужен .NET на этой Ubuntu машине
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      # 1. Скачиваем ВСЕ артефакты в ОДНУ папку БЕЗ вложенных подпапок!
+      - name: Download all Test Results
         uses: actions/download-artifact@v4
         with:
-          name: test-results-unit
           path: allure-results
+          merge-multiple: true
 
-      - name: Download Integration Test Results
-        uses: actions/download-artifact@v4
-        with:
-          name: test-results-integration
-          path: allure-results
+      # 2. Устанавливаем официальную утилиту конвертации TRX -> JUnit
+      - name: Install trx2junit
+        run: dotnet tool install -g trx2junit
 
-      # Allure умеет "из коробки" читать .trx файлы от MSTest/xUnit
+      # 3. Конвертируем скачанные .trx файлы в .xml
+      # Утилита положит их прямо рядом с .trx в папке allure-results
+      - name: Convert TRX to JUnit XML
+        run: trx2junit allure-results/*.trx
+
+      # 4. Allure найдет .xml файлы в корне и сгенерирует графики!
       - name: Generate Allure Report
         uses: simple-elf/allure-report-action@master
         id: allure-report
@@ -109,6 +121,7 @@ jobs:
           allure_report: allure-report
           allure_history: allure-history
 
+      # 5. Публикуем на GitHub Pages
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v3
         with:
