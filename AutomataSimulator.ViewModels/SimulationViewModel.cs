@@ -83,6 +83,15 @@ public class SimulationViewModel : ViewModelBase
             _engine?.Run();
             UpdateUI();
         }, _ => !HasInputError && (_engine?.CanStepForward ?? false)); // Блокируем при ошибке
+
+        // ИНИЦИАЛИЗИРУЕМ КОМАНДУ БРЕЙКПОИНТОВ:
+        ToggleBreakpointCommand = new RelayCommand(param => {
+            if (param is Guid stateId)
+            {
+                _engine?.ToggleBreakpoint(stateId);
+                UpdateUI();
+            }
+        });
     }
     // --- ИЗМЕНЕН МЕТОД: Теперь принимает строку ---
     public void Initialize(IExecutionEngine engine, string input)
